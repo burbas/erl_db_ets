@@ -23,6 +23,13 @@
           tabs = []
          }).
 
+-record(table_info, {
+          table :: string(),
+          auto_increment :: boolean(),
+          primary_field :: atom(),
+          last_id :: integer()
+         }).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -54,6 +61,13 @@ start_link(Args) ->
 %% @end
 %%--------------------------------------------------------------------
 init(_Args) ->
+    %% Initialize the erl_db_table_info is no such exists
+    case ets:info(erl_db_table_info) of
+        undefined ->
+            ets:new(erl_db_table_info, [public, named_table, {keypos, 2}]);
+        _ ->
+            ok
+    end,
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -70,18 +84,42 @@ init(_Args) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({save, Object}, _From, State = #state{tabs = Tabs}) ->
+handle_call({save, Object}, _From, State) ->
     Model = element(1, Object),
-    case proplists:get_value(Model, Tabs) of
+    case ets:info(Model) of
         undefined ->
-            %% We need to create the tab first
-            Tab = ets:new(Model, []),
-            true = ets:insert(Tab, Object),
-            {reply, ok, State#state{tabs = [{Model, Tab}|Tabs]}};
-        Tab ->
-            ets:insert(Tab, Object),
-            {reply, ok, State}
+            %% We might need to create the tab first
+            create_table(Model),
+            true = ets:insert(Model, Object);
+        _Info ->
+            ets:insert(Model, Object)
+    end,
+    {reply, ok, State};
+
+handle_call({find, Model, Conditions}, _From, State) ->
+    case ets:info(Model) of
+        undefined ->
+            {reply, {error, tab_not_found}, State};
+        _Info ->
+            Fields = proplists:get_value(fields, Model:module_info(attributes)),
+            PrimaryKeyName = lists:keyfind(primary_key, 2, Fields),
+            Match = build_match_q(Conditions, Fields),
+            Object = ets:match_object(Model, Match),
+            {reply, Object, State}
     end;
+
+handle_call({delete, Model, Conditions}, _From, State) ->
+    Fields = proplists:get_value(fields, Model:module_info(attributes)),
+    PrimaryKeyName = lists:keyfind(primary_key, 2, Fields),
+    Match = build_match_q(Conditions, Fields),
+    ObjectList = ets:match_object(Model, Match),
+    lists:foreach(
+      fun(Object) ->
+              true = ets:delete_object(Model, Object)
+      end, ObjectList),
+    erl_db_log:msg(info, "Removed ~p objects of type ~p", [length(ObjectList), Model]),
+    {reply, ok, State};
+
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -140,3 +178,39 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+create_table(Model) ->
+    Fields = proplists:get_value(fields, Model:module_info(attributes), []),
+    {Fieldname, _, _} = lists:keyfind(primary_key, 2, Fields),
+    Pos = get_field_pos(Fieldname, Fields),
+    ets:new(Model, [public, named_table, {keypos, Pos}]).
+
+
+build_match_q(QueryFields, Fields) ->
+    InitialQuery = ['_'|lists:map(fun(_) ->
+                                           '_'
+                                   end, Fields)],
+    Res = build_match_q(QueryFields, Fields, InitialQuery),
+    erlang:list_to_tuple(Res).
+
+build_match_q([], _, Query) ->
+    Query;
+build_match_q([{Fieldname, 'equals', Value}|Tl], Fields, Query) ->
+    Pos = get_field_pos(Fieldname, Fields),
+    UpdatedQuery = replace_list_item(Pos, Value, Query),
+    build_match_q(Tl, Fields, UpdatedQuery).
+
+
+replace_list_item(1, Value, [_Out|Fields]) ->
+    [Value|Fields];
+replace_list_item(Pos, Value, [Field|Fields]) ->
+    [Field|replace_list_item(Pos-1, Value, Fields)].
+
+get_field_pos(Fieldname, Fields) ->
+    get_field_pos(Fieldname, Fields, 2).
+
+get_field_pos(Fieldname, [], _Acc) ->
+    {error, not_found};
+get_field_pos(Fieldname, [{Fieldname, _Type, _Args}|_], Acc) ->
+    Acc;
+get_field_pos(Fieldname, [_|Tl], Acc) ->
+    get_field_pos(Fieldname, Tl, Acc+1).
