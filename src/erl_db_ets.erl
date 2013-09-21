@@ -23,13 +23,6 @@
           tabs = []
          }).
 
--record(table_info, {
-          table :: string(),
-          auto_increment :: boolean(),
-          primary_field :: atom(),
-          last_id :: integer()
-         }).
-
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -102,7 +95,6 @@ handle_call({find, Model, Conditions}, _From, State) ->
             {reply, {error, tab_not_found}, State};
         _Info ->
             Fields = proplists:get_value(fields, Model:module_info(attributes)),
-            PrimaryKeyName = lists:keyfind(primary_key, 2, Fields),
             Match = build_match_q(Conditions, Fields),
             Object = ets:match_object(Model, Match),
             {reply, Object, State}
@@ -110,7 +102,6 @@ handle_call({find, Model, Conditions}, _From, State) ->
 
 handle_call({delete, Model, Conditions}, _From, State) ->
     Fields = proplists:get_value(fields, Model:module_info(attributes)),
-    PrimaryKeyName = lists:keyfind(primary_key, 2, Fields),
     Match = build_match_q(Conditions, Fields),
     ObjectList = ets:match_object(Model, Match),
     lists:foreach(
@@ -208,9 +199,9 @@ replace_list_item(Pos, Value, [Field|Fields]) ->
 get_field_pos(Fieldname, Fields) ->
     get_field_pos(Fieldname, Fields, 2).
 
-get_field_pos(Fieldname, [], _Acc) ->
+get_field_pos(_Fieldname, [], _Acc) ->
     {error, not_found};
-get_field_pos(Fieldname, [{Fieldname, _Type, _Args}|_], Acc) ->
+get_field_pos(_Fieldname, [{_Fieldname, _Type, _Args}|_], Acc) ->
     Acc;
 get_field_pos(Fieldname, [_|Tl], Acc) ->
     get_field_pos(Fieldname, Tl, Acc+1).
