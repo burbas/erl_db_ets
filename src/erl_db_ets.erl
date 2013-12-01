@@ -112,7 +112,17 @@ handle_call({delete, Model, Conditions}, _From, State) ->
     {reply, ok, State};
 
 handle_call({supported_conditions}, _From, State) ->
-    {reply, {ok, []}, State};
+        SupportedConditions = [
+                           'equals',
+                           'not_equals',
+                           'greater_than',
+                           'less_than',
+                           'greater_equal_than',
+                           'less_equal_than',
+                           'like',
+                           'in'
+                          ],
+    {reply, {ok, SupportedConditions}, State};
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
