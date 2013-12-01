@@ -111,6 +111,9 @@ handle_call({delete, Model, Conditions}, _From, State) ->
     erl_db_log:msg(info, "Removed ~p objects of type ~p", [length(ObjectList), Model]),
     {reply, ok, State};
 
+handle_call({supported_conditions}, _From, State) ->
+    {reply, {ok, []}, State};
+
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
