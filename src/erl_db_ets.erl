@@ -171,8 +171,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 create_table(Model) ->
     Fields = proplists:get_value(fields, Model:module_info(attributes), []),
-    {Fieldname, _, _} = lists:keyfind(primary_key, 2, Fields),
+    {Fieldname, _, _, _} = lists:keyfind(primary_key, 2, Fields),
+    io:format("Fields: ~p~nFieldname: ~p~n", [Fields, Fieldname]),
     Pos = get_field_pos(Fieldname, Fields),
+    io:format("Pos: ~p", [Pos]),
     ets:new(Model, [public, named_table, {keypos, Pos}]).
 
 
@@ -201,7 +203,7 @@ get_field_pos(Fieldname, Fields) ->
 
 get_field_pos(_Fieldname, [], _Acc) ->
     {error, not_found};
-get_field_pos(_Fieldname, [{_Fieldname, _Type, _Args}|_], Acc) ->
+get_field_pos(_Fieldname, [{_Fieldname, _Type, _Args, _}|_], Acc) ->
     Acc;
 get_field_pos(Fieldname, [_|Tl], Acc) ->
     get_field_pos(Fieldname, Tl, Acc+1).
